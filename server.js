@@ -10,8 +10,8 @@ const dbPath = path.join(__dirname, 'outlaws.db');
 const seedPath = path.join(__dirname, 'voters_seed.json');
 const uploadDir = path.join(__dirname, 'uploads');
 const adminSeed = fs.existsSync(seedPath) ? JSON.parse(fs.readFileSync(seedPath, 'utf8')) : [];
-const ADMIN_USERNAME = 'admin';
-const ADMIN_PASSWORD = 'prisonbreak11';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'prisonbreak11';
 
 fs.mkdirSync(uploadDir, { recursive: true });
 

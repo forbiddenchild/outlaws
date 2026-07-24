@@ -1,0 +1,7 @@
+node_modules
+outlaws.db
+uploads
+data
+.git
+.gitignore
+.env
