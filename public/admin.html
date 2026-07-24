@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Washington Outlaws | Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="admin">
+  <nav class="topbar">
+    <div class="brand">Washington Outlaws</div>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/vote.html">Vote</a>
+      <a href="/admin.html">Admin</a>
+      <span id="navUserName" class="nav-user hidden"></span>
+      <button id="logoutButton" class="ghost-button logout-button hidden">Logout</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="card admin-grid">
+      <div>
+        <h1>Admin Portal</h1>
+        <p>Use the admin account below to view the compiled results in chart form and export them once voting closes.</p>
+      </div>
+
+      <div id="adminLoginCard" class="admin-controls">
+        <h2>Admin Login</h2>
+        <form id="adminLoginForm">
+          <label>Username
+            <input type="text" id="adminUsername" value="admin" readonly />
+          </label>
+          <label>Password
+            <input type="password" id="adminPassword" placeholder="Enter admin password" required />
+          </label>
+          <button type="submit">Open Admin Portal</button>
+        </form>
+      </div>
+
+      <div id="adminSettingsCard" class="hidden admin-controls">
+        <h2>Election Schedule</h2>
+        <form id="adminSettingsForm">
+          <label>Start date and time
+            <input type="datetime-local" id="startTimeInput" required />
+          </label>
+          <label>Closing date and time
+            <input type="datetime-local" id="endTimeInput" required />
+          </label>
+          <button type="submit">Save Election Schedule</button>
+        </form>
+        <button id="adminCloseVotingButton" type="button">End Voting Now</button>
+        <p id="adminStatus" class="admin-status"></p>
+      </div>
+
+      <div id="adminContestantCard" class="hidden admin-controls">
+        <h2>Upload Contestant Details</h2>
+        <form id="adminContestantForm" enctype="multipart/form-data">
+          <label>Contestant name
+            <input type="text" id="contestantName" placeholder="Enter contestant name" required />
+          </label>
+          <label>Position
+            <select id="contestantPosition" required>
+              <option value="">Select position</option>
+            </select>
+          </label>
+          <label>Photo
+            <input type="file" id="contestantPhoto" accept="image/*" />
+          </label>
+          <button type="submit">Save Contestant</button>
+        </form>
+        <p id="contestantMessage" class="admin-message"></p>
+      </div>
+
+      <div id="adminPositionCard" class="hidden admin-controls">
+        <h2>Create New Position</h2>
+        <form id="adminPositionForm">
+          <label>Position label
+            <input type="text" id="positionLabel" placeholder="Enter position label" required />
+          </label>
+          <button type="submit">Add Position</button>
+        </form>
+        <p id="positionMessage" class="admin-message"></p>
+        <div id="positionListContainer" class="position-list-container"></div>
+      </div>
+
+      <div id="adminContestantListCard" class="hidden admin-controls">
+        <h2>Current Contestants</h2>
+        <div id="contestantList" class="contestant-list"></div>
+      </div>
+
+      <div id="adminVoterCard" class="hidden admin-controls">
+        <h2>Add Voter to Register</h2>
+        <form id="adminVoterForm">
+          <label>Voter full name
+            <input type="text" id="voterFullName" placeholder="Enter voter name" required />
+          </label>
+          <label>Unique ID
+            <input type="text" id="voterPassword" placeholder="Enter unique ID" required />
+          </label>
+          <button type="submit">Register Voter</button>
+        </form>
+        <p id="voterMessage" class="admin-message"></p>
+      </div>
+
+      <div id="adminResultsCard" class="hidden admin-controls">
+        <h2>Compiled Results</h2>
+        <div class="admin-actions">
+          <button id="refreshAdminResults" type="button">Refresh Results</button>
+          <button id="downloadPdfButton" type="button">Download PDF</button>
+        </div>
+        <p id="adminMessage" class="admin-message"></p>
+        <div id="adminWinnerArea" class="winner-area"></div>
+        <div id="adminChartArea" class="chart-area"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="app.js?v=5"></script>
+</body>
+</html>

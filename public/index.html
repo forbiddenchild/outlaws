@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Washington Outlaws | Home</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="home">
+  <nav class="topbar">
+    <div class="brand">Washington Outlaws</div>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/vote.html">Vote</a>
+      <a href="/admin.html">Admin</a>
+      <form id="navLoginForm" class="nav-login">
+        <select id="navFullName" required>
+          <option value="">Select your name</option>
+          <!-- VOTER_OPTIONS -->
+        </select>
+        <input type="password" id="navPassword" placeholder="Unique ID" required />
+        <button type="submit">Login</button>
+      </form>
+      <span id="navUserName" class="nav-user hidden"></span>
+      <button id="logoutButton" class="ghost-button logout-button hidden">Logout</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="hero card">
+      <h1>Washington Outlaws</h1>
+      <p>
+        Other things may change us, but we start and end with the family.
+      </p>
+    </section>
+    <h2>CONTESTANTS</h2>
+    <section class="card">
+      <div id="contestantSections"></div>
+    </section>
+
+    <section class="card">
+      <h2>Voting Steps</h2>
+      <ol>
+        <li>Choose your name from the dropdown and enter the matching unique ID in the navigation bar.</li>
+        <li>Confirm the voter name displayed in the navigation bar.</li>
+        <li>Proceed to the voting page and cast your ballot.</li>
+        <li>Review the live results after voting.</li>
+      </ol>
+    </section>
+  </main>
+
+  <script src="app.js?v=5"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Washington Outlaws | Vote</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="vote">
+  <nav class="topbar">
+    <div class="brand">Washington Outlaws</div>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/vote.html">Vote</a>
+      <a href="/admin.html">Admin</a>
+      <span id="navUserName" class="nav-user hidden"></span>
+      <button id="logoutButton" class="ghost-button logout-button hidden">Logout</button>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="card vote-card">
+      <div class="vote-header">
+        <div>
+          <h1>Cast Your Ballot</h1>
+          <p class="vote-subtitle">Choose one candidate for each position and submit your vote before the election closes.</p>
+        </div>
+        <span id="voteTimer" class="timer">Loading election timer...</span>
+      </div>
+
+      <div id="voteUserName" class="vote-user-info">Please log in using your unique code from the Outlaws roster.</div>
+
+      <form id="voteForm" class="vote-form">
+        <div class="vote-grid"></div>
+        <div class="vote-actions">
+          <button type="submit" class="primary-button">Submit Vote</button>
+          <p id="voteMessage" class="vote-message"></p>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="app.js?v=5"></script>
+</body>
+</html>

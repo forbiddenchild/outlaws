@@ -1,0 +1,14 @@
+{
+  "name": "washington-outlaws-voting-app",
+  "version": "1.0.0",
+  "description": "Voting web app for the Washington Outlaws cohort",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.2.0",
+    "sqlite3": "^5.1.7"
+  }
+}
