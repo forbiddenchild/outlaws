@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Washington Outlaws | Vote</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%97%B3%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-page="vote">
@@ -40,6 +41,19 @@
     </section>
   </main>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
+  <script>
+    var voteGridEl = document.querySelector('.vote-grid');
+    if (voteGridEl) {
+      voteGridEl.addEventListener('change', function (event) {
+        if (event.target && event.target.tagName === 'SELECT') {
+          var field = event.target.closest('.vote-field');
+          if (field) {
+            field.classList.toggle('is-selected', Boolean(event.target.value));
+          }
+        }
+      });
+    }
+  </script>
 </body>
 </html>

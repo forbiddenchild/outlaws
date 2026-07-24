@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Washington Outlaws | Home</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%97%B3%EF%B8%8F%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-page="home">
@@ -28,19 +29,28 @@
 
   <main class="container">
     <section class="hero card">
+      <span class="hero-eyebrow">🗳️ Official Election Portal</span>
       <h1>Washington Outlaws</h1>
       <p>
         Other things may change us, but we start and end with the family.
       </p>
+      <div class="hero-actions">
+        <a href="/vote.html" class="hero-cta-primary">Cast Your Vote</a>
+        <a href="/admin.html" class="hero-cta-secondary">Admin Portal</a>
+      </div>
     </section>
-    <h2>CONTESTANTS</h2>
+
+    <div class="section-heading">
+      <h2>Contestants</h2>
+      <p>Meet the candidates running for each position this election.</p>
+    </div>
     <section class="card">
       <div id="contestantSections"></div>
     </section>
 
     <section class="card">
       <h2>Voting Steps</h2>
-      <ol>
+      <ol class="steps-list">
         <li>Choose your name from the dropdown and enter the matching unique ID in the navigation bar.</li>
         <li>Confirm the voter name displayed in the navigation bar.</li>
         <li>Proceed to the voting page and cast your ballot.</li>
@@ -49,6 +59,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
