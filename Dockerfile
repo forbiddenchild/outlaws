@@ -1,17 +1,16 @@
-FROM node:20-bookworm-slim
-
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+COPY requirements.txt ./
+RUN python -m pip install --upgrade pip \
+  && pip install -r requirements.txt
 
 COPY . .
-RUN mkdir -p uploads images
+RUN chmod +x build.sh \
+  && ./build.sh
 
-EXPOSE 3000
+ENV PYTHONUNBUFFERED=1
+EXPOSE 80
 
-CMD ["node", "server.js"]
+CMD ["gunicorn", "outlaws.wsgi:application", "--bind", "0.0.0.0:80"]
