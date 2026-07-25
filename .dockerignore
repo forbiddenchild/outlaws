@@ -6,3 +6,4 @@ data
 .git
 .gitignore
 .env
+.venv
