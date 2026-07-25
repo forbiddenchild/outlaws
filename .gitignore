@@ -4,3 +4,6 @@ outlaws.db.bak
 uploads/
 data/
 .env
+staticfiles/
+__pycache__/
+*.pyc
