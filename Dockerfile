@@ -7,9 +7,7 @@ RUN python -m pip install --upgrade pip \
   && pip install -r requirements.txt
 
 COPY . .
-RUN chmod +x ./build.sh \
-  && ls -la ./build.sh \
-  && ./build.sh
+RUN sh ./build.sh
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 80
