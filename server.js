@@ -218,12 +218,6 @@ function getPositionKey(label, callback) {
   });
 }
 
-function buildVoterOptionsHtml() {
-  return adminSeed
-    .map((voter) => `          <option value="${String(voter.fullName).replace(/"/g, '&quot;')}">${String(voter.fullName).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</option>`)
-    .join('\n');
-}
-
 async function ensureSeedVoters() {
   if (!adminSeed.length) {
     return;
@@ -298,8 +292,7 @@ app.use('/uploads', express.static(uploadDir));
 
 app.get('/', (req, res) => {
   const indexPath = path.join(__dirname, 'public', 'index.html');
-  const indexHtml = fs.readFileSync(indexPath, 'utf8').replace('<!-- VOTER_OPTIONS -->', buildVoterOptionsHtml());
-  res.send(indexHtml);
+  res.sendFile(indexPath);
 });
 
 app.use(express.static(path.join(__dirname, 'public'), { etag: false, maxAge: 0 }));

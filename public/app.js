@@ -176,17 +176,39 @@ function applyAdminState() {
   }
 }
 
+function normalizeVoterItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => {
+    if (typeof item === 'string') {
+      return { fullName: item, hasVoted: false };
+    }
+
+    return {
+      fullName: String(item.fullName || item.full_name || '').trim(),
+      hasVoted: Boolean(item.hasVoted || item.has_voted),
+    };
+  }).filter((item) => item.fullName);
+}
+
 function renderVoterDropdown(names) {
   const select = document.getElementById('navFullName');
   if (!select) {
     return;
   }
 
+  const voters = normalizeVoterItems(names);
   select.innerHTML = '<option value="">Select your name</option>';
-  names.forEach((name) => {
+  voters.forEach((voter) => {
     const option = document.createElement('option');
-    option.value = name;
-    option.textContent = name;
+    option.value = voter.fullName;
+    option.textContent = voter.hasVoted
+      ? `${voter.fullName} (already voted)`
+      : voter.fullName;
+    option.disabled = voter.hasVoted;
+    option.dataset.hasVoted = voter.hasVoted;
     select.appendChild(option);
   });
 }
@@ -194,19 +216,19 @@ function renderVoterDropdown(names) {
 function loadVoterNames() {
   const cachedNames = getStoredVoters();
   if (Array.isArray(cachedNames) && cachedNames.length) {
-    voterNames = cachedNames;
+    voterNames = normalizeVoterItems(cachedNames);
     renderVoterDropdown(voterNames);
   }
 
   fetch('/api/voters')
     .then((response) => response.json())
     .then((data) => {
-      voterNames = Array.isArray(data) ? data : [];
+      voterNames = normalizeVoterItems(data);
       setStoredVoters(voterNames);
       renderVoterDropdown(voterNames);
     })
     .catch(() => {
-      voterNames = Array.isArray(cachedNames) ? cachedNames : [];
+      voterNames = normalizeVoterItems(cachedNames);
       renderVoterDropdown(voterNames);
       console.warn('Could not load voter names, using cached list.');
     });
@@ -729,8 +751,8 @@ function renderWinnerCards(resultMap, isClosed) {
 
   const winnerCards = Object.entries(resultMap).map(([position, rows]) => {
     const totalVotes = rows.reduce((sum, row) => sum + row.count, 0);
-    const winner = Array.isArray(rows) && rows.length ? rows[0] : null;
-    if (!winner) {
+    const topRows = Array.isArray(rows) ? rows.filter((row) => row.count === rows[0]?.count) : [];
+    if (!topRows.length) {
       return `
         <div class="winner-card">
           <h3>${getPositionLabel(position)}</h3>
@@ -739,17 +761,26 @@ function renderWinnerCards(resultMap, isClosed) {
       `;
     }
 
-    const percent = totalVotes ? ((winner.count / totalVotes) * 100).toFixed(1) : '0.0';
-    const winnerPhoto = winner.photoPath
-      ? `<div class="winner-photo"><img src="${winner.photoPath}" alt="${winner.candidate}" /> </div>`
+    const tied = topRows.length > 1;
+    const winnerCandidates = topRows.map((row) => row.candidate).join(', ');
+    const topCount = topRows[0].count;
+    const percent = totalVotes ? ((topCount / totalVotes) * 100).toFixed(1) : '0.0';
+
+    const winnerPhoto = !tied && topRows[0].photoPath
+      ? `<div class="winner-photo"><img src="${topRows[0].photoPath}" alt="${topRows[0].candidate}" /> </div>`
       : '';
+
+    const title = tied ? 'Tie' : winnerCandidates;
+    const subtitle = tied
+      ? `Tie between ${winnerCandidates} with ${topCount} vote${topCount === 1 ? '' : 's'} each (${percent}% of votes)`
+      : `${percent}% of votes (${topCount} vote${topCount === 1 ? '' : 's'})`;
 
     return `
       <div class="winner-card">
         ${winnerPhoto}
         <h3>${getPositionLabel(position)}</h3>
-        <p class="winner-name">${winner.candidate}</p>
-        <p class="winner-subtext">${percent}% of votes (${winner.count} vote${winner.count === 1 ? '' : 's'})</p>
+        <p class="winner-name">${title}</p>
+        <p class="winner-subtext">${subtitle}</p>
       </div>
     `;
   });

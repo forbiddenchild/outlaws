@@ -243,13 +243,38 @@ body[data-page="admin"] .nav-links a[href="/admin.html"] {
   position: relative;
   overflow: hidden;
   text-align: center;
-  padding: 56px 32px;
+  padding: 22px 20px 16px;
   border: none;
   color: #ffffff;
-  background:
-    radial-gradient(600px 300px at 15% 0%, rgba(255, 255, 255, 0.18), transparent 60%),
-    radial-gradient(500px 260px at 90% 100%, rgba(16, 185, 129, 0.35), transparent 60%),
-    linear-gradient(135deg, #4338ca 0%, #4f46e5 45%, #6d28d9 100%);
+  background: rgba(0, 0, 0, 0.28);
+  height: 300px;
+  min-height: 280px;
+}
+
+.hero-video-grid {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  height: 120px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  z-index: 0;
+}
+
+.hero-video-bg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  opacity: 0.82;
+  background: #000;
+}
+
+.hero.card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .hero-eyebrow {
@@ -1031,7 +1056,18 @@ button:disabled {
   }
 
   .hero.card {
-    padding: 40px 22px;
+    padding: 30px 18px 12px;
+    height: auto;
+    min-height: 280px;
+  }
+
+  .hero-video-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: 110px;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    gap: 8px;
   }
 
   .card,
@@ -1071,6 +1107,20 @@ button:disabled {
   }
 
   .nav-links {
+    gap: 6px;
+  }
+
+  .hero.card {
+    padding: 22px 14px 10px;
+    min-height: 260px;
+  }
+
+  .hero-video-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    height: 96px;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
     gap: 6px;
   }
 
