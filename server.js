@@ -17,8 +17,14 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'prisonbreak11';
 const databaseUrl = process.env.DATABASE_URL || '';
 const usePostgres = Boolean(databaseUrl);
+const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_ENV);
 let db = null;
 let pgClient = null;
+
+if (!usePostgres && isRender) {
+  console.error('ERROR: DATABASE_URL is required on Render for durable storage. Local SQLite data will be lost after restarts.');
+  process.exit(1);
+}
 
 const dbSeedPath = process.env.DB_SEED_PATH || '/etc/secrets/outlaws.db';
 if (!usePostgres && !fs.existsSync(dbPath) && fs.existsSync(dbSeedPath)) {
@@ -211,6 +217,43 @@ function buildVoterOptionsHtml() {
     .join('\n');
 }
 
+async function ensureSeedVoters() {
+  if (!adminSeed.length) {
+    return;
+  }
+
+  let inserted = 0;
+  for (const voter of adminSeed) {
+    const fullName = String(voter.fullName || voter.full_name || '').replace(/^[\s\u2022\uF0B7\-]+/, '').trim();
+    const password = String(voter.password || voter.pass || '').trim();
+
+    if (!fullName || !password) {
+      continue;
+    }
+
+    const existing = await dbGetPromise(
+      'SELECT 1 FROM voters WHERE full_name = ? AND password = ? LIMIT 1',
+      [fullName, password]
+    );
+
+    if (existing) {
+      continue;
+    }
+
+    await dbRunPromise(
+      'INSERT INTO voters (password, full_name, has_voted) VALUES (?, ?, 0)',
+      [password, fullName]
+    );
+    inserted += 1;
+  }
+
+  if (inserted > 0) {
+    console.log(`Seeded ${inserted} missing voters from ${seedPath}`);
+  } else {
+    console.log(`No new seed voters needed from ${seedPath}`);
+  }
+}
+
 function getElectionSetting(key, callback) {
   db.get('SELECT value FROM election_settings WHERE key = ?', [key], (err, row) => {
     if (err) {
@@ -283,7 +326,7 @@ async function initializeDatabase() {
     await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS voters (
         ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
-        password TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL,
         full_name TEXT NOT NULL,
         has_voted INTEGER DEFAULT 0
       )
@@ -343,17 +386,7 @@ async function initializeDatabase() {
       )
     `);
 
-    const countRow = await dbGetPromise('SELECT COUNT(*) AS count FROM voters', []);
-    if (countRow && Number(countRow.count) === 0 && adminSeed.length) {
-      for (const voter of adminSeed) {
-        await dbRunPromise(
-          `INSERT INTO voters (password, full_name, has_voted) VALUES (?, ?, 0)` +
-          (usePostgres ? ' ON CONFLICT (password) DO NOTHING' : ' ON CONFLICT(password) DO NOTHING'),
-          [voter.password, String(voter.fullName).replace(/^[\s\u2022\uF0B7\-]+/, '').trim()]
-        );
-      }
-      console.log(`Seeded ${adminSeed.length} voters from ${seedPath}`);
-    }
+    await ensureSeedVoters();
 
     await dbRunPromise(
       `INSERT INTO election_settings (key, value) VALUES (?, ?)` +
@@ -708,13 +741,13 @@ app.post('/api/admin/voters', (req, res) => {
     return res.status(400).json({ error: 'Voter full name and unique ID are required.' });
   }
 
-  db.get('SELECT 1 FROM voters WHERE password = ?', [uniqueId], (lookupErr, row) => {
+  db.get('SELECT 1 FROM voters WHERE full_name = ? LIMIT 1', [fullName.trim()], (lookupErr, row) => {
     if (lookupErr) {
-      return res.status(500).json({ error: 'Could not verify unique ID.' });
+      return res.status(500).json({ error: 'Could not verify voter registration.' });
     }
 
     if (row) {
-      return res.status(409).json({ error: 'That unique ID is already registered. Choose a different one.' });
+      return res.status(409).json({ error: 'That full name is already registered. Choose a different voter.' });
     }
 
     db.run(
