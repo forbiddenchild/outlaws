@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const sqlite3 = require('sqlite3').verbose();
+const { Client } = require('pg');
+const cloudinary = require('cloudinary').v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,17 +15,111 @@ const uploadDir = path.join(dataDir, 'uploads');
 const adminSeed = fs.existsSync(seedPath) ? JSON.parse(fs.readFileSync(seedPath, 'utf8')) : [];
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'prisonbreak11';
+const databaseUrl = process.env.DATABASE_URL || '';
+const usePostgres = Boolean(databaseUrl);
+let db = null;
+let pgClient = null;
 
 const dbSeedPath = process.env.DB_SEED_PATH || '/etc/secrets/outlaws.db';
-if (!fs.existsSync(dbPath) && fs.existsSync(dbSeedPath)) {
+if (!usePostgres && !fs.existsSync(dbPath) && fs.existsSync(dbSeedPath)) {
   fs.mkdirSync(dataDir, { recursive: true });
   fs.copyFileSync(dbSeedPath, dbPath);
 }
 
+function prepareQuery(sql, params = []) {
+  if (!usePostgres || !params.length) {
+    return { sql, params };
+  }
+
+  let index = 0;
+  return {
+    sql: sql.replace(/\?/g, () => `$${++index}`),
+    params
+  };
+}
+
+function dbAll(sql, params = [], callback) {
+  if (usePostgres) {
+    const { sql: preparedSql, params: preparedParams } = prepareQuery(sql, params);
+    pgClient.query(preparedSql, preparedParams)
+      .then((result) => callback(null, result.rows))
+      .catch(callback);
+  } else {
+    db.all(sql, params, callback);
+  }
+}
+
+function dbGet(sql, params = [], callback) {
+  if (usePostgres) {
+    const { sql: preparedSql, params: preparedParams } = prepareQuery(sql, params);
+    pgClient.query(preparedSql, preparedParams)
+      .then((result) => callback(null, result.rows[0] || null))
+      .catch(callback);
+  } else {
+    db.get(sql, params, callback);
+  }
+}
+
+function dbRun(sql, params = [], callback) {
+  if (usePostgres) {
+    const { sql: preparedSql, params: preparedParams } = prepareQuery(sql, params);
+    pgClient.query(preparedSql, preparedParams)
+      .then(() => callback(null))
+      .catch(callback);
+  } else {
+    db.run(sql, params, callback);
+  }
+}
+
+function dbRunReturning(sql, params = [], callback) {
+  if (usePostgres) {
+    const { sql: preparedSql, params: preparedParams } = prepareQuery(sql, params);
+    pgClient.query(preparedSql, preparedParams)
+      .then((result) => callback(null, result.rows[0] || null))
+      .catch(callback);
+  } else {
+    db.run(sql, params, function (err) {
+      callback(err, this);
+    });
+  }
+}
+
+function dbAllPromise(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    dbAll(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+}
+
+function dbGetPromise(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    dbGet(sql, params, (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+}
+
+function dbRunPromise(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    dbRun(sql, params, (err) => {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+
 fs.mkdirSync(uploadDir, { recursive: true });
 
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config({ url: process.env.CLOUDINARY_URL });
+}
+const useCloudinary = Boolean(process.env.CLOUDINARY_URL);
+
 const upload = multer({
-  storage: multer.diskStorage({
+  storage: useCloudinary ? multer.memoryStorage() : multer.diskStorage({
     destination: (_req, _file, callback) => callback(null, uploadDir),
     filename: (_req, file, callback) => {
       const safeName = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -31,6 +127,16 @@ const upload = multer({
     }
   })
 });
+
+function uploadToCloudinary(buffer, filename) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream({ resource_type: 'image', public_id: `outlaws/${Date.now()}-${filename}` }, (error, result) => {
+      if (error) return reject(error);
+      resolve(result && result.secure_url ? result.secure_url : null);
+    });
+    stream.end(buffer);
+  });
+}
 
 const defaultPositions = [
   { key: 'president', label: 'President' },
@@ -148,129 +254,124 @@ app.get('/', (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public'), { etag: false, maxAge: 0 }));
 
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Unable to connect to the database:', err.message);
-    process.exit(1);
+async function initializeDatabase() {
+  if (usePostgres) {
+    pgClient = new Client({
+      connectionString: databaseUrl,
+      ssl: { rejectUnauthorized: false }
+    });
+
+    await pgClient.connect();
+    db = {
+      all: dbAll,
+      get: dbGet,
+      run: dbRun
+    };
+  } else {
+    await new Promise((resolve, reject) => {
+      db = new sqlite3.Database(dbPath, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve();
+      });
+    });
   }
 
-  db.serialize(() => {
-    db.run(`
+  try {
+    await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS voters (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
         password TEXT NOT NULL UNIQUE,
         full_name TEXT NOT NULL,
         has_voted INTEGER DEFAULT 0
       )
-    `, (createErr) => {
-      if (createErr) {
-        console.error('Failed to initialize voters table:', createErr.message);
-        process.exit(1);
-      }
-    });
+    `);
 
-    db.run(`
+    await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS contestants (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
         name TEXT NOT NULL,
         position TEXT NOT NULL,
         photo_path TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        created_at ${usePostgres ? 'TIMESTAMP' : 'TEXT'} DEFAULT CURRENT_TIMESTAMP
       )
-    `, (createErr) => {
-      if (createErr) {
-        console.error('Failed to initialize contestants table:', createErr.message);
-        process.exit(1);
-      }
-    });
+    `);
 
-    db.run(`
+    await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS election_settings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
         key TEXT NOT NULL UNIQUE,
         value TEXT NOT NULL
       )
-    `, (createErr) => {
-      if (createErr) {
-        console.error('Failed to initialize election_settings table:', createErr.message);
-        process.exit(1);
-      }
-    });
+    `);
 
-    db.run(`
+    await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS positions (
         key TEXT PRIMARY KEY,
         label TEXT NOT NULL,
         order_idx INTEGER NOT NULL
       )
-    `, (createErr) => {
-      if (createErr) {
-        console.error('Failed to initialize positions table:', createErr.message);
-        process.exit(1);
-      }
-    });
+    `);
 
-    const insertPosition = db.prepare(
-      'INSERT OR IGNORE INTO positions (key, label, order_idx) VALUES (?, ?, ?)'
-    );
-    defaultPositions.forEach((position, index) => {
-      insertPosition.run(position.key, position.label, index);
-    });
-    insertPosition.finalize();
+    for (let index = 0; index < defaultPositions.length; index += 1) {
+      const position = defaultPositions[index];
+      await dbRunPromise(
+        `INSERT INTO positions (key, label, order_idx) VALUES (?, ?, ?)` +
+        (usePostgres ? ' ON CONFLICT (key) DO NOTHING' : ' ON CONFLICT(key) DO NOTHING'),
+        [position.key, position.label, index]
+      );
+    }
 
-    db.run(`
+    await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS ballots (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
         voter_password TEXT NOT NULL,
         voter_name TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        created_at ${usePostgres ? 'TIMESTAMP' : 'TEXT'} DEFAULT CURRENT_TIMESTAMP
       )
-    `, (createErr) => {
-      if (createErr) {
-        console.error('Failed to initialize ballots table:', createErr.message);
-        process.exit(1);
-      }
-    });
+    `);
 
-    db.run(`
+    await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS vote_selections (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
         ballot_id INTEGER NOT NULL,
         position_key TEXT NOT NULL,
         candidate TEXT NOT NULL,
         FOREIGN KEY(ballot_id) REFERENCES ballots(id)
       )
-    `, (createErr) => {
-      if (createErr) {
-        console.error('Failed to initialize vote_selections table:', createErr.message);
-        process.exit(1);
-      }
-    });
+    `);
 
-    db.get('SELECT COUNT(*) AS count FROM voters', [], (countErr, countRow) => {
-      if (!countErr && countRow && countRow.count === 0) {
-        const insert = db.prepare('INSERT INTO voters (password, full_name, has_voted) VALUES (?, ?, 0)');
-        adminSeed.forEach((voter) => {
-          insert.run(voter.password, String(voter.fullName).replace(/^[\s\u2022\uF0B7\-]+/, '').trim());
-        });
-        insert.finalize(() => {
-          console.log(`Seeded ${adminSeed.length} voters from ${seedPath}`);
-        });
-      } else if (countErr) {
-        console.error('Voter seed check failed:', countErr.message);
+    const countRow = await dbGetPromise('SELECT COUNT(*) AS count FROM voters', []);
+    if (countRow && Number(countRow.count) === 0 && adminSeed.length) {
+      for (const voter of adminSeed) {
+        await dbRunPromise(
+          `INSERT INTO voters (password, full_name, has_voted) VALUES (?, ?, 0)` +
+          (usePostgres ? ' ON CONFLICT (password) DO NOTHING' : ' ON CONFLICT(password) DO NOTHING'),
+          [voter.password, String(voter.fullName).replace(/^[\s\u2022\uF0B7\-]+/, '').trim()]
+        );
       }
-    });
+      console.log(`Seeded ${adminSeed.length} voters from ${seedPath}`);
+    }
 
-    const insertSetting = db.prepare(
-      'INSERT OR IGNORE INTO election_settings (key, value) VALUES (?, ?)'
+    await dbRunPromise(
+      `INSERT INTO election_settings (key, value) VALUES (?, ?)` +
+      (usePostgres ? ' ON CONFLICT (key) DO NOTHING' : ' ON CONFLICT(key) DO NOTHING'),
+      ['election_start_time', '2026-07-24T00:00:00']
     );
-    insertSetting.run('election_start_time', '2026-07-24T00:00:00');
-    insertSetting.run('election_end_time', '2026-12-31T23:59:59');
-    insertSetting.finalize();
+    await dbRunPromise(
+      `INSERT INTO election_settings (key, value) VALUES (?, ?)` +
+      (usePostgres ? ' ON CONFLICT (key) DO NOTHING' : ' ON CONFLICT(key) DO NOTHING'),
+      ['election_end_time', '2026-12-31T23:59:59']
+    );
 
-    console.log('Database ready at', dbPath);
-  });
-});
+    console.log('Database ready at', usePostgres ? databaseUrl : dbPath);
+  } catch (error) {
+    console.error('Failed to initialize database:', error.message || error);
+    process.exit(1);
+  }
+}
 
 app.get('/api/positions', (req, res) => {
   getPositions((err, results) => {
@@ -528,23 +629,30 @@ app.delete('/api/admin/positions/:key', (req, res) => {
       return res.status(404).json({ error: 'Position not found.' });
     }
 
-    db.serialize(() => {
-      db.run('DELETE FROM vote_selections WHERE position_key = ?', [positionKey]);
-      db.run('DELETE FROM contestants WHERE position = ?', [positionKey]);
-      db.run('DELETE FROM positions WHERE key = ?', [positionKey], function (deleteErr) {
-        if (deleteErr) {
-          return res.status(500).json({ error: 'Could not delete position.' });
+    dbRun('DELETE FROM vote_selections WHERE position_key = ?', [positionKey], (deleteErr1) => {
+      if (deleteErr1) {
+        return res.status(500).json({ error: 'Could not delete related vote selections.' });
+      }
+
+      dbRun('DELETE FROM contestants WHERE position = ?', [positionKey], (deleteErr2) => {
+        if (deleteErr2) {
+          return res.status(500).json({ error: 'Could not delete related contestants.' });
         }
 
-        res.json({ message: `Position ${positionRow.label} deleted successfully.`, position: positionRow });
+        dbRun('DELETE FROM positions WHERE key = ?', [positionKey], function (deleteErr3) {
+          if (deleteErr3) {
+            return res.status(500).json({ error: 'Could not delete position.' });
+          }
+
+          res.json({ message: `Position ${positionRow.label} deleted successfully.`, position: positionRow });
+        });
       });
     });
   });
 });
 
-app.post('/api/admin/contestants', upload.single('photo'), (req, res) => {
+app.post('/api/admin/contestants', upload.single('photo'), async (req, res) => {
   const { username, password, name, position } = req.body;
-  const photoPath = req.file ? `/uploads/${req.file.filename}` : '';
 
   if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: 'Admin authentication required.' });
@@ -554,17 +662,38 @@ app.post('/api/admin/contestants', upload.single('photo'), (req, res) => {
     return res.status(400).json({ error: 'Candidate name and position are required.' });
   }
 
-  db.run(
-    'INSERT INTO contestants (name, position, photo_path) VALUES (?, ?, ?)',
-    [name.trim(), position, photoPath],
-    function (insertErr) {
-      if (insertErr) {
-        return res.status(500).json({ error: 'Could not save contestant details.' });
+  try {
+    let photoPath = '';
+    if (req.file) {
+      if (useCloudinary && req.file.buffer) {
+        try {
+          const uploaded = await uploadToCloudinary(req.file.buffer, req.file.originalname || 'upload');
+          photoPath = uploaded || '';
+        } catch (e) {
+          console.error('Cloudinary upload failed:', e.message || e);
+          return res.status(500).json({ error: 'Image upload failed.' });
+        }
+      } else if (req.file.path) {
+        photoPath = `/uploads/${path.basename(req.file.path)}`;
       }
-
-      res.status(201).json({ message: 'Contestant saved successfully.', contestant: { name, position, photoPath } });
     }
-  );
+
+    db.run(
+      'INSERT INTO contestants (name, position, photo_path) VALUES (?, ?, ?)',
+      [name.trim(), position, photoPath],
+      function (insertErr) {
+        if (insertErr) {
+          console.error('Contestant insert failed:', insertErr);
+          return res.status(500).json({ error: 'Could not save contestant details.' });
+        }
+
+        res.status(201).json({ message: 'Contestant saved successfully.', contestant: { name, position, photoPath } });
+      }
+    );
+  } catch (err) {
+    console.error('Unexpected error saving contestant:', err);
+    res.status(500).json({ error: 'Could not save contestant details.' });
+  }
 });
 
 
@@ -663,25 +792,33 @@ app.post('/api/vote', (req, res) => {
           return res.status(409).json({ error: 'This voter has already cast a ballot.' });
         }
 
-        db.run(
-          'INSERT INTO ballots (voter_password, voter_name) VALUES (?, ?)',
-          [password, row.full_name],
-          function (insertErr) {
-            if (insertErr) {
-              return res.status(500).json({ error: 'Vote submission failed.' });
-            }
+        const ballotQuery = usePostgres
+          ? 'INSERT INTO ballots (voter_password, voter_name) VALUES (?, ?) RETURNING id'
+          : 'INSERT INTO ballots (voter_password, voter_name) VALUES (?, ?)';
 
-            const ballotId = this.lastID;
-            const stmt = db.prepare('INSERT INTO vote_selections (ballot_id, position_key, candidate) VALUES (?, ?, ?)');
-            positionsList.forEach((position) => {
-              stmt.run(ballotId, position.key, selections[position.key]);
-            });
-            stmt.finalize((finalizeErr) => {
-              if (finalizeErr) {
-                return res.status(500).json({ error: 'Could not save vote selections.' });
+        dbRunReturning(ballotQuery, [password, row.full_name], (insertErr, result) => {
+          if (insertErr) {
+            return res.status(500).json({ error: 'Vote submission failed.' });
+          }
+
+          const ballotId = usePostgres ? result.id : result.lastID;
+          const selectionPromises = positionsList.map((position) => new Promise((resolve, reject) => {
+            dbRun(
+              'INSERT INTO vote_selections (ballot_id, position_key, candidate) VALUES (?, ?, ?)',
+              [ballotId, position.key, selections[position.key]],
+              (insertErr2) => {
+                if (insertErr2) {
+                  reject(insertErr2);
+                } else {
+                  resolve();
+                }
               }
+            );
+          }));
 
-              db.run(
+          Promise.all(selectionPromises)
+            .then(() => {
+              dbRun(
                 'UPDATE voters SET has_voted = 1 WHERE password = ?',
                 [password],
                 function (updateErr) {
@@ -692,9 +829,11 @@ app.post('/api/vote', (req, res) => {
                   res.status(201).json({ message: `Vote recorded successfully for ${row.full_name}.` });
                 }
               );
+            })
+            .catch(() => {
+              res.status(500).json({ error: 'Could not save vote selections.' });
             });
-          }
-        );
+        });
       });
     });
   });
@@ -767,6 +906,13 @@ app.get('/api/results', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Voting app running on http://localhost:${PORT}`);
-});
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Voting app running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err.message || err);
+    process.exit(1);
+  });

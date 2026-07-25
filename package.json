@@ -9,6 +9,8 @@
   "dependencies": {
     "express": "^4.19.2",
     "multer": "^2.2.0",
+    "pg": "^8.13.0",
+    "cloudinary": "^1.37.0",
     "sqlite3": "^5.1.7"
   }
 }

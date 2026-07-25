@@ -1,0 +1,47 @@
+name: Backup Postgres (daily)
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # daily at 02:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pg tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump Postgres DB
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then echo "DATABASE_URL secret is required"; exit 1; fi
+          FNAME="outlaws-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+          pg_dump "$DATABASE_URL" | gzip > "$FNAME"
+
+      - name: Upload to S3 (if configured)
+        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.S3_BUCKET }}
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Copy backup to S3
+        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.S3_BUCKET }}
+        run: |
+          FILE=$(ls outlaws-*.sql.gz | tail -n1)
+          aws s3 cp "$FILE" "s3://${{ secrets.S3_BUCKET }}/$FILE"
+
+      - name: Upload artifact fallback
+        if: ${{ !(secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.S3_BUCKET) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: outlaws-backup
+          path: outlaws-*.sql.gz
