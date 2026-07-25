@@ -6,12 +6,19 @@ const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const dbPath = path.join(__dirname, 'outlaws.db');
+const dataDir = process.env.DATA_DIR || __dirname;
+const dbPath = path.join(dataDir, 'outlaws.db');
 const seedPath = path.join(__dirname, 'voters_seed.json');
-const uploadDir = path.join(__dirname, 'uploads');
+const uploadDir = path.join(dataDir, 'uploads');
 const adminSeed = fs.existsSync(seedPath) ? JSON.parse(fs.readFileSync(seedPath, 'utf8')) : [];
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'prisonbreak11';
+
+const dbSeedPath = process.env.DB_SEED_PATH || '/etc/secrets/outlaws.db';
+if (!fs.existsSync(dbPath) && fs.existsSync(dbSeedPath)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.copyFileSync(dbSeedPath, dbPath);
+}
 
 fs.mkdirSync(uploadDir, { recursive: true });
 

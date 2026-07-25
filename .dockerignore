@@ -1,5 +1,7 @@
 node_modules
 outlaws.db
+outlaws.db.bak
+voters_seed.json
 uploads
 data
 .git

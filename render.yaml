@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: washington-outlaws-voting
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: DATA_DIR
+        value: /app/data
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: voting-data
+      mountPath: /app/data
+      sizeGB: 1
