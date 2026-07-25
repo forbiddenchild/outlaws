@@ -72,12 +72,29 @@ function setStoredUser(user) {
   localStorage.setItem('outlawsVoter', JSON.stringify(user));
 }
 
-function setStoredAdmin(user) {
-  localStorage.setItem('outlawsAdmin', JSON.stringify(user));
-}
-
 function clearStoredUser() {
   localStorage.removeItem('outlawsVoter');
+}
+
+function getStoredVoters() {
+  try {
+    const stored = localStorage.getItem('outlawsVoters');
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function setStoredVoters(voters) {
+  localStorage.setItem('outlawsVoters', JSON.stringify(Array.isArray(voters) ? voters : []));
+}
+
+function clearStoredVoters() {
+  localStorage.removeItem('outlawsVoters');
+}
+
+function setStoredAdmin(user) {
+  localStorage.setItem('outlawsAdmin', JSON.stringify(user));
 }
 
 function clearStoredAdmin() {
@@ -159,30 +176,39 @@ function applyAdminState() {
   }
 }
 
+function renderVoterDropdown(names) {
+  const select = document.getElementById('navFullName');
+  if (!select) {
+    return;
+  }
+
+  select.innerHTML = '<option value="">Select your name</option>';
+  names.forEach((name) => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  });
+}
+
 function loadVoterNames() {
+  const cachedNames = getStoredVoters();
+  if (Array.isArray(cachedNames) && cachedNames.length) {
+    voterNames = cachedNames;
+    renderVoterDropdown(voterNames);
+  }
+
   fetch('/api/voters')
     .then((response) => response.json())
     .then((data) => {
-      voterNames = data;
-      if (!Array.isArray(voterNames)) {
-        voterNames = [];
-      }
-
-      const select = document.getElementById('navFullName');
-      if (!select) {
-        return;
-      }
-
-      select.innerHTML = '<option value="">Select your name</option>';
-      voterNames.forEach((name) => {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
-        select.appendChild(option);
-      });
+      voterNames = Array.isArray(data) ? data : [];
+      setStoredVoters(voterNames);
+      renderVoterDropdown(voterNames);
     })
     .catch(() => {
-      console.warn('Could not load voter names.');
+      voterNames = Array.isArray(cachedNames) ? cachedNames : [];
+      renderVoterDropdown(voterNames);
+      console.warn('Could not load voter names, using cached list.');
     });
 }
 
@@ -218,15 +244,12 @@ function login(event) {
       refreshNavUser();
       applyLoginState();
 
-      const voteUserName = document.getElementById('voteUserName');
-      if (voteUserName) {
-        voteUserName.textContent = `Logged in as: ${data.fullName}`;
-      }
-
       const voteMessage = document.getElementById('voteMessage');
       if (voteMessage) {
-        voteMessage.textContent = 'You are logged in and ready to vote from the Vote page.';
+        voteMessage.textContent = 'Login successful. Redirecting to the voting page...';
       }
+
+      window.location.href = '/vote.html';
     })
     .catch(() => {
       window.alert('Login failed.');
@@ -1084,6 +1107,7 @@ function initAdminPage() {
           }
           if (!data.error) {
             voterForm.reset();
+            loadVoterNames();
           }
         })
         .catch(() => {

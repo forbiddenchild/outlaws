@@ -98,7 +98,14 @@ function dbAllPromise(sql, params = []) {
     });
   });
 }
-
+function dbRunReturningPromise(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    dbRunReturning(sql, params, (err, result) => {
+      if (err) return reject(err);
+      resolve(result);
+    });
+  });
+}
 function dbGetPromise(sql, params = []) {
   return new Promise((resolve, reject) => {
     dbGet(sql, params, (err, row) => {
@@ -332,6 +339,11 @@ async function initializeDatabase() {
       )
     `);
 
+    if (usePostgres) {
+      await dbRunPromise('ALTER TABLE voters DROP CONSTRAINT IF EXISTS voters_password_key');
+      await dbRunPromise('DROP INDEX IF EXISTS voters_password_key');
+    }
+
     await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS contestants (
         ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
@@ -370,11 +382,21 @@ async function initializeDatabase() {
     await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS ballots (
         ${usePostgres ? 'id SERIAL PRIMARY KEY' : 'id INTEGER PRIMARY KEY AUTOINCREMENT'},
+        voter_id INTEGER,
         voter_password TEXT NOT NULL,
         voter_name TEXT NOT NULL,
         created_at ${usePostgres ? 'TIMESTAMP' : 'TEXT'} DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    if (usePostgres) {
+      await dbRunPromise('ALTER TABLE ballots ADD COLUMN IF NOT EXISTS voter_id INTEGER');
+    } else {
+      const ballotInfo = await dbAllPromise('PRAGMA table_info(ballots)');
+      if (!ballotInfo.some((column) => column.name === 'voter_id')) {
+        await dbRunPromise('ALTER TABLE ballots ADD COLUMN voter_id INTEGER');
+      }
+    }
 
     await dbRunPromise(`
       CREATE TABLE IF NOT EXISTS vote_selections (
@@ -441,10 +463,12 @@ app.post('/api/login', (req, res) => {
       return res.status(404).json({ error: 'Invalid name or unique ID. Please choose the correct name and enter the matching unique ID.' });
     }
 
+    const hasVoted = Number(row.has_voted) === 1 || row.has_voted === true;
+
     res.json({
       message: 'Login successful.',
       fullName: row.full_name,
-      hasVoted: row.has_voted === 1,
+      hasVoted,
       role: 'voter'
     });
   });
@@ -790,86 +814,90 @@ app.get('/api/contestants', (req, res) => {
   });
 });
 
-app.post('/api/vote', (req, res) => {
+app.post('/api/vote', async (req, res) => {
   const { fullName, password, selections } = req.body;
 
   if (!fullName || !password || !selections) {
     return res.status(400).json({ error: 'All required vote details are missing.' });
   }
 
-  getPositions((posErr, positionsList) => {
-    if (posErr) {
-      return res.status(500).json({ error: 'Could not validate positions.' });
-    }
-
-    const hasAllPositions = positionsList.every((position) => Object.prototype.hasOwnProperty.call(selections, position.key) && selections[position.key]);
-    if (!hasAllPositions) {
-      return res.status(400).json({ error: 'Please select a candidate for every post.' });
-    }
-
-    isVotingWindowOpen((isOpen) => {
-      if (!isOpen) {
-        return res.status(403).json({ error: 'Voting is not active for this window. Please wait for the scheduled start time or the election may already be closed.' });
-      }
-
-      db.get('SELECT full_name, has_voted FROM voters WHERE full_name = ? AND password = ?', [fullName, password], (err, row) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database lookup failed.' });
-        }
-
-        if (!row) {
-          return res.status(404).json({ error: 'Voter not found. Use the correct name and unique ID.' });
-        }
-
-        if (row.has_voted === 1) {
-          return res.status(409).json({ error: 'This voter has already cast a ballot.' });
-        }
-
-        const ballotQuery = usePostgres
-          ? 'INSERT INTO ballots (voter_password, voter_name) VALUES (?, ?) RETURNING id'
-          : 'INSERT INTO ballots (voter_password, voter_name) VALUES (?, ?)';
-
-        dbRunReturning(ballotQuery, [password, row.full_name], (insertErr, result) => {
-          if (insertErr) {
-            return res.status(500).json({ error: 'Vote submission failed.' });
-          }
-
-          const ballotId = usePostgres ? result.id : result.lastID;
-          const selectionPromises = positionsList.map((position) => new Promise((resolve, reject) => {
-            dbRun(
-              'INSERT INTO vote_selections (ballot_id, position_key, candidate) VALUES (?, ?, ?)',
-              [ballotId, position.key, selections[position.key]],
-              (insertErr2) => {
-                if (insertErr2) {
-                  reject(insertErr2);
-                } else {
-                  resolve();
-                }
-              }
-            );
-          }));
-
-          Promise.all(selectionPromises)
-            .then(() => {
-              dbRun(
-                'UPDATE voters SET has_voted = 1 WHERE password = ?',
-                [password],
-                function (updateErr) {
-                  if (updateErr) {
-                    return res.status(500).json({ error: 'Could not update voter status.' });
-                  }
-
-                  res.status(201).json({ message: `Vote recorded successfully for ${row.full_name}.` });
-                }
-              );
-            })
-            .catch(() => {
-              res.status(500).json({ error: 'Could not save vote selections.' });
-            });
-        });
-      });
+  const getPositionsAsync = () => new Promise((resolve, reject) => {
+    getPositions((err, rows) => {
+      if (err) return reject(err);
+      resolve(rows || []);
     });
   });
+
+  const isVotingOpenAsync = () => new Promise((resolve) => {
+    isVotingWindowOpen(resolve);
+  });
+
+  let positionsList;
+  try {
+    positionsList = await getPositionsAsync();
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not validate positions.' });
+  }
+
+  const hasAllPositions = positionsList.every((position) => Object.prototype.hasOwnProperty.call(selections, position.key) && selections[position.key]);
+  if (!hasAllPositions) {
+    return res.status(400).json({ error: 'Please select a candidate for every post.' });
+  }
+
+  try {
+    const isOpen = await isVotingOpenAsync();
+    if (!isOpen) {
+      return res.status(403).json({ error: 'Voting is not active for this window. Please wait for the scheduled start time or the election may already be closed.' });
+    }
+  } catch (err) {
+    return res.status(500).json({ error: 'Could not validate the voting window.' });
+  }
+
+  let voter;
+  try {
+    voter = await dbGetPromise('SELECT id, full_name, has_voted FROM voters WHERE full_name = ? AND password = ?', [fullName, password]);
+  } catch (err) {
+    return res.status(500).json({ error: 'Database lookup failed.' });
+  }
+
+  if (!voter) {
+    return res.status(404).json({ error: 'Voter not found. Use the correct name and unique ID.' });
+  }
+
+  const hasVoted = Number(voter.has_voted) === 1 || voter.has_voted === true;
+  if (hasVoted) {
+    return res.status(409).json({ error: 'This voter has already cast a ballot.' });
+  }
+
+  const ballotQuery = usePostgres
+    ? 'INSERT INTO ballots (voter_id, voter_password, voter_name) VALUES (?, ?, ?) RETURNING id'
+    : 'INSERT INTO ballots (voter_id, voter_password, voter_name) VALUES (?, ?, ?)';
+
+  try {
+    await dbRunPromise('BEGIN');
+
+    const result = await dbRunReturningPromise(ballotQuery, [voter.id, password, voter.full_name]);
+    const ballotId = usePostgres ? result && result.id : result && result.lastID;
+    if (!ballotId) {
+      throw new Error('Could not create ballot record.');
+    }
+
+    await Promise.all(
+      positionsList.map((position) => dbRunPromise(
+        'INSERT INTO vote_selections (ballot_id, position_key, candidate) VALUES (?, ?, ?)',
+        [ballotId, position.key, selections[position.key]]
+      ))
+    );
+
+    await dbRunPromise('UPDATE voters SET has_voted = 1 WHERE id = ?', [voter.id]);
+    await dbRunPromise('COMMIT');
+
+    res.status(201).json({ message: `Vote recorded successfully for ${voter.full_name}.` });
+  } catch (err) {
+    await dbRunPromise('ROLLBACK').catch(() => {});
+    console.error('Vote transaction failed:', err.message || err);
+    res.status(500).json({ error: 'Could not record your vote. Please try again or contact the election administrator.' });
+  }
 });
 
 app.get('/api/admin/results', (req, res) => {
