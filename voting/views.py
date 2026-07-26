@@ -15,6 +15,7 @@ ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'prisonbreak11')
 
 DEFAULT_STATIC_DIR = settings.BASE_DIR / 'public'
+GALLERY_DIR = settings.BASE_DIR / 'gallery'
 
 
 def home(request):
@@ -120,17 +121,29 @@ def get_election_setting(key):
         return None
 
 
+def parse_election_time(value):
+    """Return a timezone-aware election timestamp, or None for invalid input."""
+    from django.utils import timezone
+    from django.utils.dateparse import parse_datetime
+
+    parsed = parse_datetime(value or '')
+    if not parsed:
+        return None
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
 def is_voting_window_open():
     start_time = get_election_setting('election_start_time')
     end_time = get_election_setting('election_end_time')
     if not start_time or not end_time:
         return False
 
-    from django.utils.dateparse import parse_datetime
     from django.utils.timezone import now
 
-    start_dt = parse_datetime(start_time)
-    end_dt = parse_datetime(end_time)
+    start_dt = parse_election_time(start_time)
+    end_dt = parse_election_time(end_time)
     now_dt = now()
 
     if not start_dt or not end_dt:
@@ -174,16 +187,19 @@ def api_admin_settings(request):
     if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
         return JsonResponse({'error': 'Admin authentication required.'}, status=401)
 
-    from django.utils.dateparse import parse_datetime
+    start_dt = parse_election_time(start_time)
+    end_dt = parse_election_time(end_time)
 
-    if not start_time or not parse_datetime(start_time):
+    if not start_dt:
         return JsonResponse({'error': 'A valid start time is required.'}, status=400)
-    if not end_time or not parse_datetime(end_time):
+    if not end_dt:
         return JsonResponse({'error': 'A valid end time is required.'}, status=400)
 
-    if start_time >= end_time:
+    if start_dt >= end_dt:
         return JsonResponse({'error': 'The start time must be earlier than the closing time.'}, status=400)
 
+    start_time = start_dt.isoformat()
+    end_time = end_dt.isoformat()
     ElectionSetting.objects.update_or_create(key='election_start_time', defaults={'value': start_time})
     ElectionSetting.objects.update_or_create(key='election_end_time', defaults={'value': end_time})
 
@@ -481,7 +497,10 @@ def api_results(request):
 
 
 def public_asset(request, path):
-    file_path = DEFAULT_STATIC_DIR / path
+    if path.startswith('gallery/'):
+        file_path = GALLERY_DIR / path.removeprefix('gallery/')
+    else:
+        file_path = DEFAULT_STATIC_DIR / path
     if file_path.exists() and file_path.is_file():
         return FileResponse(open(file_path, 'rb'))
     return HttpResponseNotFound('File not found.')

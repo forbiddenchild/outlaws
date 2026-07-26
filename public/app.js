@@ -620,6 +620,16 @@ function startVoteTimer(endTime) {
   voteTimerInterval = setInterval(() => updateVoteTimer(endTime), 1000);
 }
 
+function toDateTimeLocalValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function loadElectionTimer() {
   const timerEl = document.getElementById('voteTimer');
   if (!timerEl) {
@@ -912,10 +922,10 @@ function loadAdminStatus() {
       const startInput = document.getElementById('startTimeInput');
       const endInput = document.getElementById('endTimeInput');
       if (startInput && status.startTime) {
-        startInput.value = status.startTime.slice(0, 16);
+        startInput.value = toDateTimeLocalValue(status.startTime);
       }
       if (endInput && status.endTime) {
-        endInput.value = status.endTime.slice(0, 16);
+        endInput.value = toDateTimeLocalValue(status.endTime);
       }
     })
     .catch(() => {
@@ -989,8 +999,10 @@ function initAdminPage() {
         return;
       }
 
-      const startTime = document.getElementById('startTimeInput').value;
-      const endTime = document.getElementById('endTimeInput').value;
+      const startInput = document.getElementById('startTimeInput');
+      const endInput = document.getElementById('endTimeInput');
+      const startTime = new Date(startInput.value).toISOString();
+      const endTime = new Date(endInput.value).toISOString();
       fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

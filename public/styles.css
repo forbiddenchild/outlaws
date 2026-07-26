@@ -251,25 +251,47 @@ body[data-page="admin"] .nav-links a[href="/admin.html"] {
   min-height: 280px;
 }
 
-.hero-video-grid {
+.hero-gallery {
   position: absolute;
   left: 14px;
   right: 14px;
   bottom: 14px;
   height: 120px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   z-index: 0;
+  isolation: isolate;
 }
 
-.hero-video-bg {
+.hero-gallery::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(120deg, rgba(234, 44, 111, 0.42), rgba(119, 77, 255, 0.32), rgba(0, 193, 184, 0.36), rgba(255, 177, 46, 0.38));
+  mix-blend-mode: color;
+}
+
+.hero-gallery img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: var(--radius-sm);
-  opacity: 0.82;
-  background: #000;
+  opacity: 0.88;
+  filter: saturate(1.45) contrast(1.08);
+  transition: transform 260ms ease, filter 260ms ease;
+}
+
+.hero-gallery img:nth-child(odd) {
+  mix-blend-mode: screen;
+}
+
+.hero-gallery img:hover {
+  transform: scale(1.04);
+  filter: saturate(1.7) contrast(1.12) brightness(1.06);
 }
 
 .hero.card > * {
@@ -1061,8 +1083,8 @@ button:disabled {
     min-height: 280px;
   }
 
-  .hero-video-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .hero-gallery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     height: 110px;
     bottom: 12px;
     left: 12px;
@@ -1115,7 +1137,7 @@ button:disabled {
     min-height: 260px;
   }
 
-  .hero-video-grid {
+  .hero-gallery {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     height: 96px;
     bottom: 10px;
