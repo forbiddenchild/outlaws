@@ -1283,6 +1283,14 @@ function initAdminPage() {
 }
 
 function initHomePage() {
+  document.querySelectorAll('.hero-video-bg').forEach((video) => {
+    video.addEventListener('timeupdate', () => {
+      if (video.currentTime >= 5) {
+        video.currentTime = 0;
+      }
+    });
+  });
+
   refreshNavUser();
   loadVoterNames();
   fetchPositions()
