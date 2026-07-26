@@ -40,6 +40,7 @@ class Ballot(models.Model):
     voter = models.ForeignKey(Voter, null=True, on_delete=models.SET_NULL)
     voter_password = models.CharField(max_length=255)
     voter_name = models.CharField(max_length=255)
+    election_cycle = models.PositiveIntegerField(default=1, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

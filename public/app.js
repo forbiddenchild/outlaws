@@ -535,6 +535,46 @@ function lockVoteForm() {
   }
 }
 
+function unlockVoteForm() {
+  Array.from(document.querySelectorAll('#voteForm select')).forEach((select) => {
+    select.disabled = false;
+  });
+  const submitButton = document.querySelector('#voteForm button');
+  if (submitButton) {
+    submitButton.disabled = false;
+  }
+}
+
+function refreshVoteEligibility() {
+  if (!loggedInUser) {
+    return Promise.resolve();
+  }
+
+  return fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fullName: loggedInUser.fullName, password: loggedInUser.password })
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      loggedInUser.hasVoted = Boolean(data.hasVoted);
+      setStoredUser(loggedInUser);
+      if (loggedInUser.hasVoted) {
+        document.getElementById('voteMessage').textContent = 'This voter has already submitted a ballot.';
+        lockVoteForm();
+      } else {
+        unlockVoteForm();
+      }
+    })
+    .catch(() => {
+      // Keep the locally stored status if the eligibility check is unavailable.
+    });
+}
+
 function submitVote(event) {
   event.preventDefault();
 
@@ -1017,7 +1057,7 @@ function initAdminPage() {
 
           const statusBox = document.getElementById('adminStatus');
           if (statusBox) {
-            statusBox.textContent = `Schedule updated: ${data.startTime} to ${data.endTime}`;
+            statusBox.textContent = `${data.message || 'Schedule updated.'} ${data.startTime} to ${data.endTime}`;
           }
         })
         .catch(() => {
@@ -1282,6 +1322,7 @@ function initVotePage() {
     .then(() => {
       renderVoteFields();
       populateFields();
+      return refreshVoteEligibility();
     })
     .catch(() => {
       const voteGrid = document.querySelector('.vote-grid');
@@ -1305,7 +1346,6 @@ function initVotePage() {
     document.getElementById('voteMessage').textContent = 'This voter has already submitted a ballot.';
     lockVoteForm();
   }
-
   const voteForm = document.getElementById('voteForm');
   if (voteForm) {
     voteForm.addEventListener('submit', submitVote);

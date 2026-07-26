@@ -134,6 +134,14 @@ def parse_election_time(value):
     return parsed
 
 
+def get_election_cycle():
+    value = get_election_setting('election_cycle')
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return 1
+
+
 def is_voting_window_open():
     start_time = get_election_setting('election_start_time')
     end_time = get_election_setting('election_end_time')
@@ -198,12 +206,28 @@ def api_admin_settings(request):
     if start_dt >= end_dt:
         return JsonResponse({'error': 'The start time must be earlier than the closing time.'}, status=400)
 
+    previous_end_dt = parse_election_time(get_election_setting('election_end_time'))
+    from django.utils import timezone
+    starts_new_cycle = previous_end_dt is not None and previous_end_dt <= timezone.now()
+    election_cycle = get_election_cycle()
+    if starts_new_cycle:
+        election_cycle += 1
+        Voter.objects.update(has_voted=False)
+        ElectionSetting.objects.update_or_create(key='election_cycle', defaults={'value': str(election_cycle)})
+
     start_time = start_dt.isoformat()
     end_time = end_dt.isoformat()
     ElectionSetting.objects.update_or_create(key='election_start_time', defaults={'value': start_time})
     ElectionSetting.objects.update_or_create(key='election_end_time', defaults={'value': end_time})
 
-    return JsonResponse({'message': 'Election schedule updated.', 'startTime': start_time, 'endTime': end_time})
+    message = 'New election schedule opened. All voters can vote again.' if starts_new_cycle else 'Election schedule updated.'
+    return JsonResponse({
+        'message': message,
+        'startTime': start_time,
+        'endTime': end_time,
+        'electionCycle': election_cycle,
+        'votersReset': starts_new_cycle,
+    })
 
 
 @csrf_exempt
@@ -441,7 +465,12 @@ def api_vote(request):
         return JsonResponse({'error': 'This voter has already cast a ballot.'}, status=409)
 
     with transaction.atomic():
-        ballot = Ballot.objects.create(voter=voter, voter_password=password, voter_name=voter.full_name)
+        ballot = Ballot.objects.create(
+            voter=voter,
+            voter_password=password,
+            voter_name=voter.full_name,
+            election_cycle=get_election_cycle(),
+        )
         selections_to_create = []
         for position_key in position_keys:
             try:
@@ -467,10 +496,11 @@ def api_admin_results(request):
         return JsonResponse({'error': 'Admin authentication required.'}, status=401)
 
     results = {}
+    election_cycle = get_election_cycle()
     positions = Position.objects.order_by('order_idx', 'label')
     for position in positions:
         rows = (
-            VoteSelection.objects.filter(position=position)
+            VoteSelection.objects.filter(ballot__election_cycle=election_cycle, position=position)
             .values('candidate')
             .annotate(count=Count('candidate'))
             .order_by('-count')
