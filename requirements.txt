@@ -2,4 +2,3 @@ Django==6.0.7
 gunicorn==22.0.0
 whitenoise
 psycopg2-binary
-cloudinary>=1.44,<2

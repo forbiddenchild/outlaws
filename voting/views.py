@@ -2,8 +2,6 @@ import json
 import os
 import re
 
-import cloudinary
-import cloudinary.uploader
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max
@@ -18,22 +16,6 @@ ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'prisonbreak11')
 
 DEFAULT_STATIC_DIR = settings.BASE_DIR / 'public'
 GALLERY_DIR = settings.BASE_DIR / 'gallery'
-
-
-def upload_contestant_photo(photo_file):
-    """Upload a contestant photo and return its permanent Cloudinary details."""
-    if not os.getenv('CLOUDINARY_URL'):
-        raise RuntimeError('Photo uploads are not configured. Set CLOUDINARY_URL first.')
-
-    cloudinary.config(secure=True)
-    result = cloudinary.uploader.upload(
-        photo_file,
-        folder='outlaws/contestants',
-        resource_type='image',
-        use_filename=True,
-        unique_filename=True,
-    )
-    return result['secure_url'], result['public_id']
 
 
 def home(request):
@@ -301,19 +283,20 @@ def api_admin_contestants(request):
             return JsonResponse({'error': 'Selected position does not exist.'}, status=400)
 
         photo_path = ''
-        photo_public_id = ''
         photo_file = request.FILES.get('photo')
         if photo_file:
-            try:
-                photo_path, photo_public_id = upload_contestant_photo(photo_file)
-            except Exception:
-                return JsonResponse({'error': 'Photo upload failed. Please try again later.'}, status=503)
+            upload_dir = DEFAULT_STATIC_DIR / 'uploads'
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            file_path = upload_dir / photo_file.name
+            with open(file_path, 'wb') as dest:
+                for chunk in photo_file.chunks():
+                    dest.write(chunk)
+            photo_path = f'/uploads/{photo_file.name}'
 
         contestant = Contestant.objects.create(
             name=name.strip(),
             position=position,
             photo_path=photo_path,
-            photo_public_id=photo_public_id,
         )
         return JsonResponse({'message': 'Contestant saved successfully.', 'contestant': {'id': contestant.id, 'name': contestant.name, 'position': contestant.position.key, 'photoPath': contestant.photo_path}}, status=201)
 
@@ -335,12 +318,7 @@ def api_admin_contestant_delete(request, contestant_id):
     except Contestant.DoesNotExist:
         return JsonResponse({'error': 'Contestant not found.'}, status=404)
 
-    if contestant.photo_public_id:
-        try:
-            cloudinary.uploader.destroy(contestant.photo_public_id, resource_type='image')
-        except Exception:
-            return JsonResponse({'error': 'Could not remove the contestant photo. Please try again.'}, status=503)
-    elif contestant.photo_path:
+    if contestant.photo_path:
         upload_file = DEFAULT_STATIC_DIR / contestant.photo_path.lstrip('/')
         if upload_file.exists():
             upload_file.unlink()
@@ -603,6 +581,8 @@ def api_results(request):
 def public_asset(request, path):
     if path.startswith('gallery/'):
         file_path = GALLERY_DIR / path.removeprefix('gallery/')
+    elif path.startswith('contestants/'):
+        file_path = settings.BASE_DIR / path
     else:
         file_path = DEFAULT_STATIC_DIR / path
     if file_path.exists() and file_path.is_file():
