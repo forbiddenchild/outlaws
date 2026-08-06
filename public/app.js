@@ -397,16 +397,42 @@ function renderAdminContestantList(contestants) {
     return;
   }
 
-  list.innerHTML = contestants
-    .map((contestant) => `
+  const contestantsByPosition = contestants.reduce((groups, contestant) => {
+    (groups[contestant.position] ||= []).push(contestant);
+    return groups;
+  }, {});
+
+  const orderedPositionKeys = [
+    ...positions.map((position) => position.key),
+    ...Object.keys(contestantsByPosition).filter((key) => !positions.some((position) => position.key === key)),
+  ];
+
+  list.innerHTML = orderedPositionKeys
+    .filter((positionKey) => contestantsByPosition[positionKey]?.length)
+    .map((positionKey) => {
+      const group = contestantsByPosition[positionKey];
+      const position = positions.find((item) => item.key === positionKey);
+      const label = position?.label || positionKey.replace(/_/g, ' ');
+
+      return `
+      <section class="contestant-group">
+        <header class="contestant-group-header">
+          <h3>${label}</h3>
+          <span>${group.length} contestant${group.length === 1 ? '' : 's'}</span>
+        </header>
+        <div class="contestant-group-list">
+          ${group.map((contestant) => `
       <div class="contestant-row">
         <div>
           <strong>${contestant.name}</strong>
-          <span>${contestant.position.replace(/_/g, ' ')}</span>
         </div>
         <button type="button" data-id="${contestant.id}">Remove</button>
       </div>
-    `)
+          `).join('')}
+        </div>
+      </section>
+    `;
+    })
     .join('');
 
   list.querySelectorAll('button[data-id]').forEach((button) => {
