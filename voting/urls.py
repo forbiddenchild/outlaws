@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/contestants', views.api_contestants),
     path('api/vote', views.api_vote),
     path('api/admin/results', views.api_admin_results),
+    path('api/admin/vote-audit', views.api_admin_vote_audit),
     path('api/results', views.api_results),
     re_path(r'^(?P<path>.*)$', views.public_asset),
 ]

@@ -147,6 +147,7 @@ function applyAdminState() {
   const adminContestantListCard = document.getElementById('adminContestantListCard');
   const adminVoterCard = document.getElementById('adminVoterCard');
   const adminResultsCard = document.getElementById('adminResultsCard');
+  const adminVoteAuditCard = document.getElementById('adminVoteAuditCard');
   const navUserName = document.getElementById('navUserName');
   const logoutButton = document.getElementById('logoutButton');
 
@@ -158,6 +159,7 @@ function applyAdminState() {
     if (adminContestantListCard) adminContestantListCard.classList.remove('hidden');
     if (adminVoterCard) adminVoterCard.classList.remove('hidden');
     if (adminResultsCard) adminResultsCard.classList.remove('hidden');
+    if (adminVoteAuditCard) adminVoteAuditCard.classList.remove('hidden');
     if (navUserName) {
       navUserName.textContent = 'Admin';
       navUserName.classList.remove('hidden');
@@ -171,6 +173,7 @@ function applyAdminState() {
     if (adminContestantListCard) adminContestantListCard.classList.add('hidden');
     if (adminVoterCard) adminVoterCard.classList.add('hidden');
     if (adminResultsCard) adminResultsCard.classList.add('hidden');
+    if (adminVoteAuditCard) adminVoteAuditCard.classList.add('hidden');
     if (navUserName) navUserName.classList.add('hidden');
     if (logoutButton) logoutButton.classList.add('hidden');
   }
@@ -204,11 +207,7 @@ function renderVoterDropdown(names) {
   voters.forEach((voter) => {
     const option = document.createElement('option');
     option.value = voter.fullName;
-    option.textContent = voter.hasVoted
-      ? `${voter.fullName} (already voted)`
-      : voter.fullName;
-    option.disabled = voter.hasVoted;
-    option.dataset.hasVoted = voter.hasVoted;
+    option.textContent = voter.fullName;
     select.appendChild(option);
   });
 }
@@ -586,7 +585,9 @@ function submitVote(event) {
   const selections = {};
   positions.forEach((position) => {
     const select = document.getElementById(position.key);
-    selections[position.key] = select ? select.value : '';
+    if (select && select.value) {
+      selections[position.key] = select.value;
+    }
   });
 
   fetch('/api/vote', {
@@ -717,13 +718,13 @@ function loadResults() {
     });
 }
 
-function renderChartCard(position, rows) {
+function renderChartCard(position, rows, totalVoters) {
   const container = document.getElementById('adminChartArea');
   if (!container) return;
 
   const card = document.createElement('div');
   card.className = 'chart-card';
-  card.innerHTML = `<h3>${getPositionLabel(position)}</h3>`;
+  card.innerHTML = `<div class="chart-card-heading"><h3>${getPositionLabel(position)}</h3><span>${totalVoters} voter${totalVoters === 1 ? '' : 's'}</span></div>`;
 
   if (!rows.length) {
     card.innerHTML += '<p>No votes yet.</p>';
@@ -731,66 +732,42 @@ function renderChartCard(position, rows) {
     return;
   }
 
-  const totalVotes = rows.reduce((sum, row) => sum + row.count, 0);
   const canvas = document.createElement('canvas');
   canvas.width = 580;
-  canvas.height = 360;
+  canvas.height = Math.max(180, 86 + rows.length * 62);
   card.appendChild(canvas);
   container.appendChild(card);
 
   const context = canvas.getContext('2d');
-  const barWidth = 52;
-  const gap = 24;
-  const chartHeight = 220;
-  const startX = 28;
-  const startY = 270;
-  const colors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
+  const startX = 160;
+  const endX = canvas.width - 42;
+  const barWidth = endX - startX;
+  const colors = ['#4f46e5', '#0ea5e9', '#14b8a6', '#f59e0b', '#f43f5e', '#8b5cf6'];
 
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = '#f8fafc';
+  context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  context.strokeStyle = '#cbd5e1';
-  context.lineWidth = 1;
-  for (let line = 0; line <= 4; line += 1) {
-    const y = startY - (chartHeight / 4) * line;
-    context.beginPath();
-    context.moveTo(startX - 10, y);
-    context.lineTo(canvas.width - 20, y);
-    context.stroke();
-  }
-
-  context.fillStyle = '#0f172a';
-  context.font = '14px Arial';
-  context.textBaseline = 'bottom';
-  context.fillText(`Total votes: ${totalVotes}`, startX, 20);
-
   rows.forEach((row, index) => {
-    const percent = totalVotes ? (row.count / totalVotes) * 100 : 0;
-    const height = Math.max((percent / 100) * chartHeight, 10);
-    const x = startX + index * (barWidth + gap);
-    const y = startY - height;
+    const percent = Number.isFinite(Number(row.percentage)) ? Number(row.percentage) : (totalVoters ? (row.count / totalVoters) * 100 : 0);
+    const y = 42 + index * 62;
     const color = colors[index % colors.length];
-
-    const gradient = context.createLinearGradient(x, y, x, startY);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(1, '#ffffff');
-
-    context.fillStyle = gradient;
-    context.fillRect(x, y, barWidth, height);
-
-    context.fillStyle = color;
-    context.fillRect(x, y, barWidth, 6);
-
     context.fillStyle = '#0f172a';
+    context.font = '600 14px Arial';
+    context.textAlign = 'left';
+    context.fillText(row.candidate, 18, y + 14);
+    context.fillStyle = '#e2e8f0';
+    context.fillRect(startX, y, barWidth, 18);
+    context.fillStyle = color;
+    context.fillRect(startX, y, Math.max(percent ? 4 : 0, barWidth * (percent / 100)), 18);
+    context.fillStyle = '#475569';
     context.font = '12px Arial';
-    context.textAlign = 'center';
-    context.fillText(`${percent.toFixed(1)}%`, x + barWidth / 2, y - 8);
-    context.fillText(row.candidate, x + barWidth / 2, startY + 24);
+    context.textAlign = 'right';
+    context.fillText(`${row.count} vote${row.count === 1 ? '' : 's'} · ${percent.toFixed(1)}%`, endX, y + 38);
   });
 }
 
-function renderWinnerCards(resultMap, isClosed) {
+function renderWinnerCards(resultMap, isClosed, totalVoters) {
   const winnerArea = document.getElementById('adminWinnerArea');
   if (!winnerArea) return;
 
@@ -800,7 +777,6 @@ function renderWinnerCards(resultMap, isClosed) {
   }
 
   const winnerCards = Object.entries(resultMap).map(([position, rows]) => {
-    const totalVotes = rows.reduce((sum, row) => sum + row.count, 0);
     const topRows = Array.isArray(rows) ? rows.filter((row) => row.count === rows[0]?.count) : [];
     if (!topRows.length) {
       return `
@@ -814,7 +790,7 @@ function renderWinnerCards(resultMap, isClosed) {
     const tied = topRows.length > 1;
     const winnerCandidates = topRows.map((row) => row.candidate).join(', ');
     const topCount = topRows[0].count;
-    const percent = totalVotes ? ((topCount / totalVotes) * 100).toFixed(1) : '0.0';
+    const percent = totalVoters ? ((topCount / totalVoters) * 100).toFixed(1) : '0.0';
 
     const winnerPhoto = !tied && topRows[0].photoPath
       ? `<div class="winner-photo"><img src="${topRows[0].photoPath}" alt="${topRows[0].candidate}" /> </div>`
@@ -845,16 +821,19 @@ function renderAdminCharts(data) {
   container.innerHTML = '';
   const resultMap = data.results || {};
   const isClosed = typeof data.isClosed === 'boolean' ? data.isClosed : !data.isOpen;
+  const totalVoters = Number(data.totalVoters) || 0;
 
-  renderWinnerCards(resultMap, isClosed);
+  renderWinnerCards(resultMap, isClosed, totalVoters);
 
   Object.entries(resultMap).forEach(([position, rows]) => {
-    renderChartCard(position, rows || []);
+    renderChartCard(position, rows || [], totalVoters);
   });
 
   const adminMessage = document.getElementById('adminMessage');
   if (adminMessage) {
-    adminMessage.textContent = isClosed ? 'Election is closed. Download the PDF report from the admin portal.' : 'Election remains open. Results will be available once voting closes.';
+    adminMessage.textContent = isClosed
+      ? `${totalVoters} voter${totalVoters === 1 ? '' : 's'} submitted a ballot. Download the PDF report from the admin portal.`
+      : `${totalVoters} voter${totalVoters === 1 ? '' : 's'} submitted a ballot so far. Results are finalized once voting closes.`;
   }
 }
 
@@ -890,6 +869,52 @@ function loadAdminResults() {
     });
 }
 
+function escapeHtml(value) {
+  const element = document.createElement('div');
+  element.textContent = value == null ? '' : String(value);
+  return element.innerHTML;
+}
+
+function renderVoteAudit(data) {
+  const auditBody = document.getElementById('voteAuditBody');
+  const auditSummary = document.getElementById('voteAuditSummary');
+  if (!auditBody || !auditSummary) return;
+
+  const votes = Array.isArray(data.votes) ? data.votes : [];
+  const totalVoters = Number(data.totalVoters) || 0;
+  auditSummary.textContent = `${totalVoters} voter${totalVoters === 1 ? '' : 's'} submitted a ballot. ${votes.length} selection${votes.length === 1 ? '' : 's'} recorded.`;
+  auditBody.innerHTML = votes.length
+    ? votes.map((vote) => `
+        <tr>
+          <td>${escapeHtml(vote.voterName)}</td>
+          <td>${escapeHtml(vote.position)}</td>
+          <td>${escapeHtml(vote.candidate)}</td>
+          <td>${new Date(vote.submittedAt).toLocaleString()}</td>
+        </tr>
+      `).join('')
+    : '<tr><td colspan="4" class="empty-audit">No votes have been recorded for this election cycle.</td></tr>';
+}
+
+function loadAdminVoteAudit() {
+  const storedAdmin = getStoredAdmin();
+  if (!storedAdmin) return;
+
+  const query = new URLSearchParams({
+    fullName: storedAdmin.fullName,
+    password: storedAdmin.password,
+  });
+  fetch(`/api/admin/vote-audit?${query.toString()}`)
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.error) throw new Error(data.error);
+      renderVoteAudit(data);
+    })
+    .catch(() => {
+      const auditSummary = document.getElementById('voteAuditSummary');
+      if (auditSummary) auditSummary.textContent = 'Unable to load the vote audit.';
+    });
+}
+
 function printAdminResults() {
   const winnerArea = document.getElementById('adminWinnerArea');
   const chartArea = document.getElementById('adminChartArea');
@@ -902,12 +927,21 @@ function printAdminResults() {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
 
-  pdf.setFontSize(18);
+  pdf.setDrawColor(79, 70, 229);
+  pdf.setLineWidth(0.8);
+  pdf.line(16, 17, pageWidth - 16, 17);
+  pdf.setFontSize(11);
+  pdf.setTextColor('#4f46e5');
   pdf.setFont('helvetica', 'bold');
-  pdf.text('Washington Outlaws Election Results', pageWidth / 2, 20, { align: 'center' });
+  pdf.text('WASHINGTON OUTLAWS', pageWidth / 2, 12, { align: 'center' });
+  pdf.setFontSize(20);
+  pdf.setTextColor('#0f172a');
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('ELECTION RESULTS', pageWidth / 2, 27, { align: 'center' });
   pdf.setFontSize(11);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, 28, { align: 'center' });
+  pdf.setTextColor('#475569');
+  pdf.text(`Official report · Generated ${new Date().toLocaleString()}`, pageWidth / 2, 34, { align: 'center' });
 
   const renderSection = (element, yStart) => {
     return window.html2canvas(element, { backgroundColor: '#ffffff', scale: 2 }).then((canvas) => {
@@ -933,13 +967,17 @@ function printAdminResults() {
       congratsY = 20;
     }
 
-    pdf.setFontSize(14);
-    pdf.setTextColor('#1f2937');
+    pdf.setFontSize(12);
+    pdf.setTextColor('#0f172a');
     pdf.setFont('helvetica', 'bold');
-    pdf.text('Congratulations to the winners and everyone who participated!', pageWidth / 2, congratsY, { align: 'center' });
+    pdf.text('Declared by:', 20, congratsY);
+    pdf.text('MAURICE KATEREGGA', pageWidth / 2, congratsY + 9, { align: 'center' });
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('CHAIRPERSON, ELECTORAL COMMISSION · WASHINGTON OUTLAWS', pageWidth / 2, congratsY + 15, { align: 'center' });
   };
 
-  renderSection(winnerArea, 34)
+  renderSection(winnerArea, 42)
     .then((nextY) => renderSection(chartArea, nextY))
     .then((nextY) => {
       appendCongratulations(nextY);
@@ -1020,6 +1058,7 @@ function initAdminPage() {
           applyAdminState();
           loadAdminStatus();
           loadAdminResults();
+          loadAdminVoteAudit();
           loadAdminPositions();
           loadAdminContestants();
         })
@@ -1254,7 +1293,10 @@ function initAdminPage() {
 
   const refreshAdminResults = document.getElementById('refreshAdminResults');
   if (refreshAdminResults) {
-    refreshAdminResults.addEventListener('click', loadAdminResults);
+    refreshAdminResults.addEventListener('click', () => {
+      loadAdminResults();
+      loadAdminVoteAudit();
+    });
   }
 
   const downloadPdfButton = document.getElementById('downloadPdfButton');
@@ -1277,6 +1319,7 @@ function initAdminPage() {
 
   if (storedAdmin) {
     loadAdminResults();
+    loadAdminVoteAudit();
     loadAdminPositions();
     loadAdminContestants();
   }

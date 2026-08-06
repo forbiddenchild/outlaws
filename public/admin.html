@@ -114,11 +114,23 @@
         <div id="adminWinnerArea" class="winner-area"></div>
         <div id="adminChartArea" class="chart-area"></div>
       </div>
+
+      <div id="adminVoteAuditCard" class="hidden admin-controls">
+        <h2>Vote Audit</h2>
+        <p>Admin-only record of each voter’s selections for the current election cycle.</p>
+        <p id="voteAuditSummary" class="admin-message"></p>
+        <div class="audit-table-wrap">
+          <table class="audit-table">
+            <thead><tr><th>Voter</th><th>Post</th><th>Selected candidate</th><th>Submitted</th></tr></thead>
+            <tbody id="voteAuditBody"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

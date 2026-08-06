@@ -1025,12 +1025,66 @@ button:disabled {
   font-size: 0.98rem;
 }
 
+.chart-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.chart-card-heading span {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .chart-card canvas {
   width: 100%;
   height: auto;
   display: block;
   margin-top: 10px;
   border-radius: var(--radius-sm);
+}
+
+.audit-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+  font-size: 0.9rem;
+}
+
+.audit-table th,
+.audit-table td {
+  padding: 13px 15px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.audit-table th {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.audit-table tbody tr:nth-child(even) {
+  background: var(--color-surface-alt);
+}
+
+.audit-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.empty-audit {
+  color: var(--color-text-muted);
+  text-align: center !important;
 }
 
 /* ---------- Responsive ---------- */

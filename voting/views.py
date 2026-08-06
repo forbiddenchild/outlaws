@@ -42,17 +42,9 @@ def api_voters(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
-    voters = list(
-        Voter.objects.order_by('full_name').values('full_name', 'has_voted')
-    )
+    voters = Voter.objects.order_by('full_name').values_list('full_name', flat=True)
     return JsonResponse(
-        [
-            {
-                'fullName': voter['full_name'],
-                'hasVoted': bool(voter['has_voted']),
-            }
-            for voter in voters
-        ],
+        [{'fullName': voter} for voter in voters],
         safe=False,
     )
 
@@ -446,12 +438,30 @@ def api_vote(request):
     password = payload.get('password')
     selections = payload.get('selections')
 
-    if not full_name or not password or not selections:
+    if not full_name or not password or not isinstance(selections, dict):
         return JsonResponse({'error': 'All required vote details are missing.'}, status=400)
 
-    position_keys = list(Position.objects.values_list('key', flat=True))
-    if not all(position_key in selections and selections[position_key] for position_key in position_keys):
-        return JsonResponse({'error': 'Please select a candidate for every post.'}, status=400)
+    positions = list(Position.objects.all())
+    selected_choices = {
+        position_key: str(candidate).strip()
+        for position_key, candidate in selections.items()
+        if str(candidate).strip()
+    }
+    if not selected_choices:
+        return JsonResponse({'error': 'Please select a candidate for at least one post.'}, status=400)
+
+    position_map = {position.key: position for position in positions}
+    if any(position_key not in position_map for position_key in selected_choices):
+        return JsonResponse({'error': 'Your ballot contains an invalid post.'}, status=400)
+
+    valid_choices = set(
+        Contestant.objects.filter(
+            position__key__in=selected_choices.keys(),
+            name__in=selected_choices.values(),
+        ).values_list('position__key', 'name')
+    )
+    if any((position_key, candidate) not in valid_choices for position_key, candidate in selected_choices.items()):
+        return JsonResponse({'error': 'Your ballot contains an invalid candidate.'}, status=400)
 
     if not is_voting_window_open():
         return JsonResponse({'error': 'Voting is not active for this window. Please wait for the scheduled start time or the election may already be closed.'}, status=403)
@@ -472,12 +482,14 @@ def api_vote(request):
             election_cycle=get_election_cycle(),
         )
         selections_to_create = []
-        for position_key in position_keys:
-            try:
-                position = Position.objects.get(key=position_key)
-            except Position.DoesNotExist:
-                raise ValueError('Invalid position configured.')
-            selections_to_create.append(VoteSelection(ballot=ballot, position=position, candidate=selections[position_key]))
+        for position_key, candidate in selected_choices.items():
+            selections_to_create.append(
+                VoteSelection(
+                    ballot=ballot,
+                    position=position_map[position_key],
+                    candidate=candidate,
+                )
+            )
 
         VoteSelection.objects.bulk_create(selections_to_create)
         voter.has_voted = True
@@ -495,8 +507,9 @@ def api_admin_results(request):
     if provided_username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
         return JsonResponse({'error': 'Admin authentication required.'}, status=401)
 
-    results = {}
     election_cycle = get_election_cycle()
+    total_voters = Ballot.objects.filter(election_cycle=election_cycle).count()
+    results = {}
     positions = Position.objects.order_by('order_idx', 'label')
     for position in positions:
         rows = (
@@ -509,13 +522,48 @@ def api_admin_results(request):
             {
                 'candidate': row['candidate'],
                 'count': row['count'],
+                'percentage': round((row['count'] / total_voters) * 100, 1) if total_voters else 0,
                 'photoPath': Contestant.objects.filter(position=position, name=row['candidate']).values_list('photo_path', flat=True).first() or '/images/SaveClip.App_475291800_18038161979590096_2106789025414944852_n.webp'
             }
             for row in rows
         ]
 
     is_open = is_voting_window_open()
-    return JsonResponse({'isOpen': is_open, 'isClosed': not is_open, 'results': results})
+    return JsonResponse({
+        'isOpen': is_open,
+        'isClosed': not is_open,
+        'totalVoters': total_voters,
+        'results': results,
+    })
+
+
+def api_admin_vote_audit(request):
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Method not allowed.'}, status=405)
+
+    provided_username = request.GET.get('username') or request.GET.get('fullName')
+    password = request.GET.get('password')
+    if provided_username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
+        return JsonResponse({'error': 'Admin authentication required.'}, status=401)
+
+    election_cycle = get_election_cycle()
+    selections = (
+        VoteSelection.objects.filter(ballot__election_cycle=election_cycle)
+        .select_related('ballot', 'position')
+        .order_by('ballot__voter_name', 'position__order_idx', 'position__label')
+    )
+    return JsonResponse({
+        'totalVoters': Ballot.objects.filter(election_cycle=election_cycle).count(),
+        'votes': [
+            {
+                'voterName': selection.ballot.voter_name,
+                'position': selection.position.label,
+                'candidate': selection.candidate,
+                'submittedAt': selection.ballot.created_at.isoformat(),
+            }
+            for selection in selections
+        ],
+    })
 
 
 def api_results(request):
