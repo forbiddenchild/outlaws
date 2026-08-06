@@ -7,7 +7,9 @@ RUN python -m pip install --upgrade pip \
   && pip install -r requirements.txt
 
 COPY . .
-RUN sh ./build.sh
+
+# Fix: Explicitly give execution rights and run with the shell interpreter
+RUN chmod +x ./build.sh && ./build.sh
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 80
