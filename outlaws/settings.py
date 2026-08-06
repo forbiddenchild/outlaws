@@ -80,6 +80,11 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 
 if DATABASE_URL:
     parsed_url = urlparse(DATABASE_URL)
+    if parsed_url.scheme not in ('postgres', 'postgresql') or not parsed_url.hostname or not parsed_url.path:
+        raise ValueError(
+            'DATABASE_URL must be a complete PostgreSQL URL, for example '
+            'postgresql://USER:PASSWORD@HOST:5432/DATABASE'
+        )
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',

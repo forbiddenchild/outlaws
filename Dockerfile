@@ -8,10 +8,12 @@ RUN python -m pip install --upgrade pip \
 
 COPY . .
 
-# Fix: Explicitly give execution rights and run with the shell interpreter
-RUN chmod +x ./build.sh && ./build.sh
+# Static assets do not require a database connection, so they can be prepared
+# while the image is built. Database migrations run when the container starts.
+RUN python manage.py collectstatic --no-input
+RUN chmod +x ./start.sh
 
 ENV PYTHONUNBUFFERED=1
-EXPOSE 80
+EXPOSE 8000
 
-CMD ["gunicorn", "outlaws.wsgi:application", "--bind", "0.0.0.0:80"]
+CMD ["./start.sh"]
