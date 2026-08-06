@@ -17,6 +17,7 @@ class Contestant(models.Model):
     name = models.CharField(max_length=255)
     position = models.ForeignKey(Position, on_delete=models.CASCADE, related_name='contestants')
     photo_path = models.CharField(max_length=1024, blank=True)
+    photo_public_id = models.CharField(max_length=1024, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
